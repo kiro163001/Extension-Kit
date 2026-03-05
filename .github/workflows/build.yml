@@ -1,0 +1,91 @@
+name: Build Extension-Kit
+
+on:
+  push:
+    branches: [main, master, dev]
+    tags: ["v*"]
+  pull_request:
+    branches: [main, master]
+  workflow_dispatch:
+
+jobs:
+  build:
+    name: Build BOF Modules
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install MinGW cross-compiler
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            gcc-mingw-w64-x86-64 \
+            g++-mingw-w64-x86-64 \
+            mingw-w64-tools \
+            make cmake
+
+      - name: Build all BOF modules
+        run: make
+
+      - name: Collect build artifacts
+        run: |
+          mkdir -p dist/extension-kit
+          # 复制所有编译产物（各模块的 _bin 目录）
+          for dir in AD-BOF Creds-BOF Elevation-BOF Execution-BOF Injection-BOF \
+                     LateralMovement-BOF Postex-BOF Process-BOF SAL-BOF SAR-BOF; do
+            if [ -d "$dir/_bin" ]; then
+              mkdir -p "dist/extension-kit/$dir/_bin"
+              cp -r "$dir/_bin/"* "dist/extension-kit/$dir/_bin/"
+            fi
+          done
+          # 复制 axs 脚本文件
+          cp extension-kit.axs dist/extension-kit/
+          find . -name "*.axs" -not -path "./dist/*" -not -name "extension-kit.axs" | while read f; do
+            dir=$(dirname "$f")
+            mkdir -p "dist/extension-kit/$dir"
+            cp "$f" "dist/extension-kit/$dir/"
+          done
+          # 复制 _img 目录（图标等资源）
+          if [ -d "_img" ]; then
+            cp -r _img dist/extension-kit/
+          fi
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: extension-kit
+          path: dist/extension-kit/
+          retention-days: 30
+
+  release:
+    name: Create Release
+    needs: [build]
+    runs-on: ubuntu-latest
+    if: startsWith(github.ref, 'refs/tags/v')
+
+    steps:
+      - name: Download artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: extension-kit
+          path: extension-kit/
+
+      - name: Create release archive
+        run: |
+          cd extension-kit
+          zip -r ../extension-kit.zip .
+          cd ..
+          tar -czvf extension-kit.tar.gz -C extension-kit .
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v1
+        with:
+          files: |
+            extension-kit.zip
+            extension-kit.tar.gz
+          draft: false
+          prerelease: false
+          generate_release_notes: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
