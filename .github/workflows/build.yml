@@ -16,6 +16,9 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Clone Extension-Kit source
+        run: git clone --depth 1 https://github.com/Adaptix-Framework/Extension-Kit.git /tmp/extension-kit
+
       - name: Install MinGW cross-compiler
         run: |
           sudo apt-get update
@@ -29,31 +32,34 @@ jobs:
 
       - name: Build all BOF modules
         run: make
+        working-directory: /tmp/extension-kit
 
       - name: Collect build artifacts
         run: |
-          mkdir -p dist/extension-kit
+          SRC="/tmp/extension-kit"
+          DEST="dist/extension-kit"
+          mkdir -p "$DEST"
+
+          cd "$SRC"
 
           # 递归查找所有 _bin 目录，保持相对路径复制
-          # 这样子模块（Kerbeus-BOF、ADCS-BOF、SQL-BOF、LDAP-BOF、RelayInformer 等）的产物也会被包含
-          find . -name "_bin" -type d -not -path "./dist/*" | while read bindir; do
+          find . -name "_bin" -type d | while read bindir; do
             relpath="${bindir#./}"
-            mkdir -p "dist/extension-kit/$relpath"
-            cp -r "$bindir/"* "dist/extension-kit/$relpath/"
+            mkdir -p "$OLDPWD/$DEST/$relpath"
+            cp -r "$bindir/"* "$OLDPWD/$DEST/$relpath/"
           done
 
           # 复制 axs 脚本文件
-          cp extension-kit.axs dist/extension-kit/
-          find . -name "*.axs" -not -path "./dist/*" -not -name "extension-kit.axs" | while read f; do
+          find . -name "*.axs" | while read f; do
             dir=$(dirname "$f")
             reldir="${dir#./}"
-            mkdir -p "dist/extension-kit/$reldir"
-            cp "$f" "dist/extension-kit/$reldir/"
+            mkdir -p "$OLDPWD/$DEST/$reldir"
+            cp "$f" "$OLDPWD/$DEST/$reldir/"
           done
 
-          # 复制 _img 目录（图标等资源）
+          # 复制 _img 目录
           if [ -d "_img" ]; then
-            cp -r _img dist/extension-kit/
+            cp -r _img "$OLDPWD/$DEST/"
           fi
 
       - name: Upload artifacts
