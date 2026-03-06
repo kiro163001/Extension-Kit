@@ -10,39 +10,83 @@ on:
 
 jobs:
   build:
-    name: Package Extension-Kit
+    name: Build BOF Modules
     runs-on: ubuntu-latest
 
     steps:
       - uses: actions/checkout@v4
 
-      - name: Package extension-kit
+      - name: Install MinGW cross-compiler
         run: |
-          EK_SRC="sliver-web/backend/bin/adaptix-plugin/official/extension-kit"
-          DEST="dist/extension-kit"
-          mkdir -p "$DEST"
+          sudo apt-get update
+          sudo apt-get install -y \
+            gcc-mingw-w64-x86-64 \
+            g++-mingw-w64-x86-64 \
+            gcc-mingw-w64-i686 \
+            g++-mingw-w64-i686 \
+            mingw-w64-tools \
+            make cmake
 
-          # 复制整个 extension-kit 目录结构（_bin、.axs、_img）
-          cd "$EK_SRC"
+      - name: Build DCSync-BOF (verbose)
+        working-directory: AD-BOF/DCSync-BOF
+        run: |
+          mkdir -p _bin
+          CC=x86_64-w64-mingw32-gcc
+          LD=x86_64-w64-mingw32-ld
+          STRIP="x86_64-w64-mingw32-strip --strip-unneeded"
+          CFLAGS="-I. -Os -masm=intel -fno-stack-protector -mno-stack-arg-probe -DBOF -Wall -Wno-format -D_M_AMD64 -Wno-unused-variable -Wno-unknown-pragmas -Wno-missing-braces -Wno-builtin-macro-redefined -DNDEBUG"
+          LDFLAGS="-r"
+          RPC_STUB="drsuapi/ms-drsr-custom.c"
 
-          # 复制所有 _bin 目录（预编译的 .o 文件）
-          find . -name "_bin" -type d | while read bindir; do
+          echo "=== Building dcsync-single ==="
+          $CC $CFLAGS -c util/rpc-adapter.c -o _bin/rpc-adapter-single.o
+          $CC $CFLAGS -c $RPC_STUB -o _bin/ms-drsr_c-single.o
+          $CC $CFLAGS -c src/dcsync-single.c -o _bin/dcsync-single-temp.o
+          $LD $LDFLAGS _bin/rpc-adapter-single.o _bin/ms-drsr_c-single.o _bin/dcsync-single-temp.o -o _bin/dcsync-single.x64.o
+          $STRIP _bin/dcsync-single.x64.o
+          rm -f _bin/rpc-adapter-single.o _bin/ms-drsr_c-single.o _bin/dcsync-single-temp.o
+          echo "[+] dcsync-single done"
+
+          echo "=== Building dcsync-all ==="
+          $CC $CFLAGS -c util/rpc-adapter.c -o _bin/rpc-adapter-all.o
+          $CC $CFLAGS -c $RPC_STUB -o _bin/ms-drsr_c-all.o
+          $CC $CFLAGS -c src/dcsync-all.c -o _bin/dcsync-all-temp.o
+          $LD $LDFLAGS _bin/rpc-adapter-all.o _bin/ms-drsr_c-all.o _bin/dcsync-all-temp.o -o _bin/dcsync-all.x64.o
+          $STRIP _bin/dcsync-all.x64.o
+          rm -f _bin/rpc-adapter-all.o _bin/ms-drsr_c-all.o _bin/dcsync-all-temp.o
+          echo "[+] dcsync-all done"
+
+      - name: Copy DCSync-BOF artifacts
+        run: |
+          mkdir -p AD-BOF/_bin
+          cp AD-BOF/DCSync-BOF/_bin/* AD-BOF/_bin/
+
+      - name: Build all BOF modules
+        run: make
+
+      - name: Collect build artifacts
+        run: |
+          mkdir -p dist/extension-kit
+
+          # 递归查找所有 _bin 目录，保持相对路径复制
+          find . -name "_bin" -type d -not -path "./dist/*" | while read bindir; do
             relpath="${bindir#./}"
-            mkdir -p "$OLDPWD/$DEST/$relpath"
-            cp -r "$bindir/"* "$OLDPWD/$DEST/$relpath/"
+            mkdir -p "dist/extension-kit/$relpath"
+            cp -r "$bindir/"* "dist/extension-kit/$relpath/" 2>/dev/null || true
           done
 
-          # 复制所有 .axs 脚本
-          find . -name "*.axs" | while read f; do
+          # 复制 axs 脚本文件
+          cp extension-kit.axs dist/extension-kit/
+          find . -name "*.axs" -not -path "./dist/*" -not -name "extension-kit.axs" | while read f; do
             dir=$(dirname "$f")
             reldir="${dir#./}"
-            mkdir -p "$OLDPWD/$DEST/$reldir"
-            cp "$f" "$OLDPWD/$DEST/$reldir/"
+            mkdir -p "dist/extension-kit/$reldir"
+            cp "$f" "dist/extension-kit/$reldir/"
           done
 
           # 复制 _img 目录
           if [ -d "_img" ]; then
-            cp -r _img "$OLDPWD/$DEST/"
+            cp -r _img dist/extension-kit/
           fi
 
       - name: Upload artifacts
