@@ -33,21 +33,24 @@ jobs:
       - name: Collect build artifacts
         run: |
           mkdir -p dist/extension-kit
-          # 复制所有编译产物（各模块的 _bin 目录）
-          for dir in AD-BOF Creds-BOF Elevation-BOF Execution-BOF Injection-BOF \
-                     LateralMovement-BOF Postex-BOF Process-BOF SAL-BOF SAR-BOF; do
-            if [ -d "$dir/_bin" ]; then
-              mkdir -p "dist/extension-kit/$dir/_bin"
-              cp -r "$dir/_bin/"* "dist/extension-kit/$dir/_bin/"
-            fi
+
+          # 递归查找所有 _bin 目录，保持相对路径复制
+          # 这样子模块（Kerbeus-BOF、ADCS-BOF、SQL-BOF、LDAP-BOF、RelayInformer 等）的产物也会被包含
+          find . -name "_bin" -type d -not -path "./dist/*" | while read bindir; do
+            relpath="${bindir#./}"
+            mkdir -p "dist/extension-kit/$relpath"
+            cp -r "$bindir/"* "dist/extension-kit/$relpath/"
           done
+
           # 复制 axs 脚本文件
           cp extension-kit.axs dist/extension-kit/
           find . -name "*.axs" -not -path "./dist/*" -not -name "extension-kit.axs" | while read f; do
             dir=$(dirname "$f")
-            mkdir -p "dist/extension-kit/$dir"
-            cp "$f" "dist/extension-kit/$dir/"
+            reldir="${dir#./}"
+            mkdir -p "dist/extension-kit/$reldir"
+            cp "$f" "dist/extension-kit/$reldir/"
           done
+
           # 复制 _img 目录（图标等资源）
           if [ -d "_img" ]; then
             cp -r _img dist/extension-kit/
