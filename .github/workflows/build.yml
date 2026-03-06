@@ -10,46 +10,29 @@ on:
 
 jobs:
   build:
-    name: Build BOF Modules
+    name: Package Extension-Kit
     runs-on: ubuntu-latest
 
     steps:
       - uses: actions/checkout@v4
 
-      - name: Clone Extension-Kit source
-        run: git clone --depth 1 https://github.com/Adaptix-Framework/Extension-Kit.git /tmp/extension-kit
-
-      - name: Install MinGW cross-compiler
+      - name: Package extension-kit
         run: |
-          sudo apt-get update
-          sudo apt-get install -y \
-            gcc-mingw-w64-x86-64 \
-            g++-mingw-w64-x86-64 \
-            gcc-mingw-w64-i686 \
-            g++-mingw-w64-i686 \
-            mingw-w64-tools \
-            make cmake
-
-      - name: Build all BOF modules
-        run: make
-        working-directory: /tmp/extension-kit
-
-      - name: Collect build artifacts
-        run: |
-          SRC="/tmp/extension-kit"
+          EK_SRC="sliver-web/backend/bin/adaptix-plugin/official/extension-kit"
           DEST="dist/extension-kit"
           mkdir -p "$DEST"
 
-          cd "$SRC"
+          # 复制整个 extension-kit 目录结构（_bin、.axs、_img）
+          cd "$EK_SRC"
 
-          # 递归查找所有 _bin 目录，保持相对路径复制
+          # 复制所有 _bin 目录（预编译的 .o 文件）
           find . -name "_bin" -type d | while read bindir; do
             relpath="${bindir#./}"
             mkdir -p "$OLDPWD/$DEST/$relpath"
             cp -r "$bindir/"* "$OLDPWD/$DEST/$relpath/"
           done
 
-          # 复制 axs 脚本文件
+          # 复制所有 .axs 脚本
           find . -name "*.axs" | while read f; do
             dir=$(dirname "$f")
             reldir="${dir#./}"
